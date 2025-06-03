@@ -80,8 +80,8 @@ class Settings:
         self.button = pygame.Rect(wX/2-100, wY/2+150, 200, 100)
         self.pushFlag = False  # 連打防止用
 
-        self.thinkTime = 0
-        self.discussTime = 0
+        self.thinkTime = 0.1
+        self.discussTime = 0.1
 
     def update(self, screen, events):
         screen.fill((0, 0, 0))  # 背景を黒で塗りつぶし
@@ -385,9 +385,9 @@ class GameScene:
 
             # お題・役職表示
             if player.is_werewolf():
-                role_text = f"{player.name} は人狼でお題は「{self.wordList[self.word_n][1]}」です"
+                role_text = f"{player.name} さんのお題は「{self.wordList[self.word_n][1]}」です"
             else:
-                role_text = f"{player.name} は村人でお題は「{self.wordList[self.word_n][0]}」です"
+                role_text = f"{player.name} さんのお題は「{self.wordList[self.word_n][0]}」です"
             text = self.font.render(role_text, True, (255, 255, 255))
             text_rect = text.get_rect(center=(wX/2, wY/2))
             screen.blit(text, text_rect)
@@ -510,7 +510,10 @@ class TimerDisplay:
                 self.last_tick = now
 
 class VoteScene:
-    def __init__(self, players):
+    def __init__(self, players, wordList, word_n):
+        self.players = players
+        self.wordList = wordList
+        self.word_n = word_n
         self.players = players
         self.font = pygame.font.Font(JPFONT, 40)
         self.current_player_index = 0  # 必ず0で初期化
@@ -520,13 +523,13 @@ class VoteScene:
 
     def update(self, screen, events):
 
-
-
         screen.fill((0, 0, 0))
         player = self.players[self.current_player_index]
 
         if self.state == "confirm":
             # 本人確認
+            #0.1秒待つ
+            pygame.time.delay(100)
             text = self.font.render(f"あなたは {player.name} さんですか？", True, (255,255,255))
             text_rect = text.get_rect(center=(wX//2, wY//3))
             screen.blit(text, text_rect)
@@ -590,6 +593,100 @@ class VoteScene:
             if v is not None:
                 vote_count[v] += 1
         return self.votes, vote_count
+    
+class ResultScene:
+    def __init__(self, players, votes, vote_count, wordList, word_n):
+        self.players = players
+        self.votes = votes
+        self.vote_count = vote_count
+        self.wordList = wordList
+        self.word_n = word_n
+        self.font = pygame.font.Font(JPFONT, 32)
+        self.state = "wait_result"  #最初は待機状態
+        self.pushFlag = False
+
+    def update(self, screen, events):
+        screen.fill((0, 0, 0))
+        if self.state == "wait_result":
+            # 「投票結果を確認」ボタンのみ表示
+            title = self.font.render("投票結果を確認しますか？", True, (255,255,0))
+            screen.blit(title, (wX//2-120, 100))
+            check_button = pygame.Rect(wX//2-100, wY//2, 200, 60)
+            pygame.draw.rect(screen, (0, 200, 200), check_button)
+            check_text = self.font.render("投票結果を確認", True, (255,255,255))
+            check_rect = check_text.get_rect(center=check_button.center)
+            screen.blit(check_text, check_rect)
+
+            mdown = pygame.mouse.get_pressed()
+            mx, my = pygame.mouse.get_pos()
+            if mdown[0] and not self.pushFlag and check_button.collidepoint(mx, my):
+                self.state = "vote_result"
+                self.pushFlag = True
+            if not mdown[0]:
+                self.pushFlag = False
+
+        elif self.state == "vote_result":
+            # 投票結果表示
+            y = 60
+            title = self.font.render("投票結果", True, (255,255,0))
+            screen.blit(title, (wX//2-80, y))
+            y += 50
+            for i, player in enumerate(self.players):
+                voted_for = self.players[self.votes[i]].name if self.votes[i] is not None else "未投票"
+                text = self.font.render(f"{player.name} → {voted_for}", True, (255,255,255))
+                screen.blit(text, (100, y))
+                y += 40
+            y += 20
+            for i, player in enumerate(self.players):
+                text = self.font.render(f"{player.name}：{self.vote_count[i]}票", True, (200,200,255))
+                screen.blit(text, (100, y))
+                y += 30
+
+            # 次へボタン
+            next_button = pygame.Rect(wX//2-100, wY-100, 200, 60)
+            pygame.draw.rect(screen, (0, 200, 200), next_button)
+            next_text = self.font.render("全員の役職とお題", True, (255,255,255))
+            next_rect = next_text.get_rect(center=next_button.center)
+            screen.blit(next_text, next_rect)
+
+            mdown = pygame.mouse.get_pressed()
+            mx, my = pygame.mouse.get_pos()
+            if mdown[0] and not self.pushFlag and next_button.collidepoint(mx, my):
+                self.state = "reveal"
+                self.pushFlag = True
+            if not mdown[0]:
+                self.pushFlag = False
+
+        elif self.state == "reveal":
+            # ...（この部分はそのまま）...
+            # 全員の名前・人狼・お題を表示
+            y = 60
+            title = self.font.render("役職とお題", True, (255,255,0))
+            screen.blit(title, (wX//2-80, y))
+            y += 50
+            for i, player in enumerate(self.players):
+                role = "人狼" if player.is_werewolf() else "村人"
+                word = self.wordList[self.word_n][1] if player.is_werewolf() else self.wordList[self.word_n][0]
+                text = self.font.render(f"{player.name}：{role}　お題「{word}」", True, (255,255,255))
+                screen.blit(text, (100, y))
+                y += 40
+
+            # 終了ボタン
+            end_button = pygame.Rect(wX//2-100, wY-100, 200, 60)
+            pygame.draw.rect(screen, (255, 0, 0), end_button)
+            end_text = self.font.render("終了", True, (255,255,255))
+            end_rect = end_text.get_rect(center=end_button.center)
+            screen.blit(end_text, end_rect)
+
+            mdown = pygame.mouse.get_pressed()
+            mx, my = pygame.mouse.get_pos()
+            if mdown[0] and not self.pushFlag and end_button.collidepoint(mx, my):
+                return True  # タイトルなどに戻す
+            if not mdown[0]:
+                self.pushFlag = False
+
+        pygame.display.flip()
+        return False
         
 
 # メインループ
@@ -640,21 +737,26 @@ def main():
                     scene.started = True  # 一度だけTrueにする
             else:
                 if scene.update(screen, events):
+                    # GameSceneのwordList, word_nを保持しておく
+                    wordList = scene.wordList
+                    word_n = scene.word_n
                     scene = TimerDisplay(gameSettings.think_time, gameSettings.discuss_time)
-                    pass
         # タイマー表示
         elif isinstance(scene, TimerDisplay):
             if scene.update(screen, events):
-                scene = VoteScene(players)
+                scene = VoteScene(players, wordList, word_n)
             else:
                 scene.tick()
 
         elif isinstance(scene, VoteScene):
             if scene.update(screen, events):
                 votes, vote_count = scene.get_vote_results()
-                print("投票結果:", votes)
-                print("票数:", vote_count)
-                # ここで結果表示シーンなどに遷移する処理を追加
+                scene = ResultScene(players, votes, vote_count, wordList, word_n)
+
+        elif isinstance(scene, ResultScene):
+            if scene.update(screen, events):
+                # タイトルに戻す or ループ終了など
+                scene = TitleScene()
 
 
 if __name__ == "__main__":
