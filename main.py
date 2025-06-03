@@ -508,6 +508,88 @@ class TimerDisplay:
             if now - self.last_tick >= 1.0:
                 self.current_time -= 1
                 self.last_tick = now
+
+class VoteScene:
+    def __init__(self, players):
+        self.players = players
+        self.font = pygame.font.Font(JPFONT, 40)
+        self.current_player_index = 0  # 必ず0で初期化
+        self.state = "confirm"         # 必ず"confirm"で初期化
+        self.pushFlag = False
+        self.votes = [None] * len(players)
+
+    def update(self, screen, events):
+
+
+
+        screen.fill((0, 0, 0))
+        player = self.players[self.current_player_index]
+
+        if self.state == "confirm":
+            # 本人確認
+            text = self.font.render(f"あなたは {player.name} さんですか？", True, (255,255,255))
+            text_rect = text.get_rect(center=(wX//2, wY//3))
+            screen.blit(text, text_rect)
+            check_button = pygame.Rect(wX//2-100, wY//2, 200, 80)
+            pygame.draw.rect(screen, (0, 200, 0), check_button)
+            check_text = self.font.render("はい", True, (255,255,255))
+            check_rect = check_text.get_rect(center=check_button.center)
+            screen.blit(check_text, check_rect)
+
+            mdown = pygame.mouse.get_pressed()
+            mx, my = pygame.mouse.get_pos()
+            if mdown[0] and not self.pushFlag and check_button.collidepoint(mx, my):
+                self.state = "vote"
+                self.pushFlag = True
+            if not mdown[0]:
+                self.pushFlag = False
+
+        elif self.state == "vote":
+            # 投票先選択
+            text = self.font.render(f"投票する相手を選んでください", True, (255,255,255))
+            text_rect = text.get_rect(center=(wX//2, 80))
+            screen.blit(text, text_rect)
+
+            button_height = 60
+            button_margin = 20
+            buttons = []
+            for i, p in enumerate(self.players):
+                if i == self.current_player_index:
+                    continue  # 自分には投票できない
+                btn_rect = pygame.Rect(wX//2-100, 150 + (button_height+button_margin)*i, 200, button_height)
+                buttons.append((i, btn_rect))
+                pygame.draw.rect(screen, (0, 128, 255), btn_rect)
+                name_text = self.font.render(p.name, True, (255,255,255))
+                name_rect = name_text.get_rect(center=btn_rect.center)
+                screen.blit(name_text, name_rect)
+
+            mdown = pygame.mouse.get_pressed()
+            mx, my = pygame.mouse.get_pos()
+            if mdown[0] and not self.pushFlag:
+                for idx, btn_rect in buttons:
+                    if btn_rect.collidepoint(mx, my):
+                        self.votes[self.current_player_index] = idx
+                        self.current_player_index += 1
+                        if self.current_player_index >= len(self.players):
+                            return True  # 投票全員分終了
+                        else:
+                            self.state = "confirm"
+                        self.pushFlag = True
+                        break
+            if not mdown[0]:
+                self.pushFlag = False
+
+        pygame.display.flip()
+        return False
+
+    def get_vote_results(self):
+        # 誰が誰に投票したか: self.votes
+        # 票数集計
+        vote_count = [0] * len(self.players)
+        for v in self.votes:
+            if v is not None:
+                vote_count[v] += 1
+        return self.votes, vote_count
         
 
 # メインループ
@@ -562,7 +644,18 @@ def main():
                     pass
         # タイマー表示
         elif isinstance(scene, TimerDisplay):
-            scene.update(screen, events)
-            scene.tick()
+            if scene.update(screen, events):
+                scene = VoteScene(players)
+            else:
+                scene.tick()
+
+        elif isinstance(scene, VoteScene):
+            if scene.update(screen, events):
+                votes, vote_count = scene.get_vote_results()
+                print("投票結果:", votes)
+                print("票数:", vote_count)
+                # ここで結果表示シーンなどに遷移する処理を追加
+
+
 if __name__ == "__main__":
     main()
