@@ -2,8 +2,9 @@ import random
 import pygame
 from pygame.locals import *
 import sys
-
+import csv #csv読み込みライブラリ(標準)
 from text import Text
+import time
 
 wX, wY = 1000, 600  # 画面サイズ
 JPFONT = "NotoSansJP-VariableFont_wght.ttf"  # 日本語フォントのパス
@@ -79,8 +80,8 @@ class Settings:
         self.button = pygame.Rect(wX/2-100, wY/2+150, 200, 100)
         self.pushFlag = False  # 連打防止用
 
-        self.thinkTime = 1
-        self.discussTime = 3
+        self.thinkTime = 0
+        self.discussTime = 0
 
     def update(self, screen, events):
         screen.fill((0, 0, 0))  # 背景を黒で塗りつぶし
@@ -268,6 +269,10 @@ class GameScene:
         self.state = "confirm"
         self.gameSettings = gameSettings
         self.started = False  # ← 追加
+        self.setWordFlag = False  # お題設定フラグ
+        self.wordList = []
+        self.word_n = 0
+        self.word_m = 0
 
     def check_start_conditions(self, screen, events):
         screen.fill((0, 0, 0))  # 背景を黒で塗りつぶし
@@ -320,7 +325,28 @@ class GameScene:
         return False
 
     def update(self, screen, events):
-        # ...（今まで通りのupdate処理）...
+
+        # 全員分終わったら何もしない
+        if self.current_player_index >= len(self.players):
+            # 全員確認OK画面
+            screen.fill((0, 0, 0))
+            text = self.font.render("全員お題を確認しましたか？", True, (255, 255, 255))
+            text_rect = text.get_rect(center=(wX/2, wY/3))
+            screen.blit(text, text_rect)
+            # 「次へ」ボタン
+            next_button = pygame.Rect(wX/2-100, wY/2, 200, 80)
+            pygame.draw.rect(screen, (0, 200, 200), next_button)
+            next_text = self.font.render("はい", True, (255,255,255))
+            next_rect = next_text.get_rect(center=next_button.center)
+            screen.blit(next_text, next_rect)
+
+            mdown = pygame.mouse.get_pressed()
+            mx, my = pygame.mouse.get_pos()
+            if mdown[0] and next_button.collidepoint(mx, my):
+                return True  # タイマーシーンへ遷移
+            pygame.display.flip()
+            return False
+
         screen.fill((0, 0, 0))
         player = self.players[self.current_player_index]
 
@@ -343,12 +369,25 @@ class GameScene:
             if not mdown[0]:
                 self.pushFlag = False
 
+
+
         elif self.state == "show_word":
+            if not self.setWordFlag:
+                # word.csvからお題を読み込む
+                with open('word.csv', encoding='utf-8') as f:
+                    reader = csv.reader(f)
+                    self.wordList = [i for i in reader]
+                    wordLen = len(self.wordList)
+                    self.word_n = random.randint(0, wordLen - 1)
+                    self.word_m = random.randint(0, 1)
+                    print(f"今回与えられるお題は{self.wordList[self.word_n]}")
+                self.setWordFlag = True  # お題設定フラグをTrueにする
+
             # お題・役職表示
             if player.is_werewolf():
-                role_text = f"{player.name} は人狼でお題は「{word}」です"
+                role_text = f"{player.name} は人狼でお題は「{self.wordList[self.word_n][1]}」です"
             else:
-                role_text = f"{player.name} は村人でお題は「{word}」です"
+                role_text = f"{player.name} は村人でお題は「{self.wordList[self.word_n][0]}」です"
             text = self.font.render(role_text, True, (255, 255, 255))
             text_rect = text.get_rect(center=(wX/2, wY/2))
             screen.blit(text, text_rect)
@@ -365,7 +404,7 @@ class GameScene:
                     self.current_player_index += 1
                     if self.current_player_index >= len(self.players):
                         print("全員確認終了")
-                        return True
+                        #return True
                     else:
                         self.state = "confirm"
                     self.pushFlag = True
@@ -375,6 +414,100 @@ class GameScene:
         pygame.display.flip()
         return False
 
+#thinkTimeとdiscussTImeのタイマーを順番に画面に表示するクラス
+class TimerDisplay:
+    def __init__(self, think_time, discuss_time):
+        self.think_time = think_time * 60  # 秒
+        self.discuss_time = discuss_time * 60  # 秒
+        self.current_time = self.think_time
+        self.font = pygame.font.Font(JPFONT, 40)
+        self.phase = "think"  # "think"→"confirm"→"discuss"→"end"
+        self.pushFlag = False
+        self.last_tick = time.time() # 最後にtickした時間
+
+    def update(self, screen, events):
+        screen.fill((0, 0, 0))
+        if self.phase == "think":
+            # 考える時間タイマー
+            minutes = self.current_time // 60
+            seconds = self.current_time % 60
+            time_text = f"漢字を考えてください {minutes:02}:{seconds:02}"
+            text_surface = self.font.render(time_text, True, (255, 255, 255))
+            text_rect = text_surface.get_rect(center=(wX/2, wY/2))
+            screen.blit(text_surface, text_rect)
+            if self.current_time <= 0:
+                self.phase = "confirm"
+        elif self.phase == "confirm":
+            # 確認画面
+            text = self.font.render("制限時間終了！ 『次へ』で議論", True, (255, 255, 255))
+            text_rect = text.get_rect(center=(wX/2, wY/3))
+            screen.blit(text, text_rect)
+            next_button = pygame.Rect(wX/2-100, wY/2, 200, 80)
+            pygame.draw.rect(screen, (0, 200, 200), next_button)
+            next_text = self.font.render("次へ", True, (255,255,255))
+            next_rect = next_text.get_rect(center=next_button.center)
+            screen.blit(next_text, next_rect)
+            mdown = pygame.mouse.get_pressed()
+            mx, my = pygame.mouse.get_pos()
+            if mdown[0] and not self.pushFlag and next_button.collidepoint(mx, my):
+                self.phase = "discuss"
+                self.current_time = self.discuss_time
+                self.pushFlag = True
+            if not mdown[0]:
+                self.pushFlag = False
+        elif self.phase == "discuss":
+            # 議論時間タイマー
+            minutes = self.current_time // 60
+            seconds = self.current_time % 60
+            time_text = f"議論時間 {minutes:02}:{seconds:02}"
+            text_surface = self.font.render(time_text, True, (255, 255, 255))
+            text_rect = text_surface.get_rect(center=(wX/2, wY/2))
+            screen.blit(text_surface, text_rect)
+            if self.current_time <= 0:
+                self.phase = "end"
+        elif self.phase == "end":
+            # 議論時間終了画面＋「投票へ」ボタン
+            text = self.font.render("議論時間終了！", True, (255, 255, 255))
+            text_rect = text.get_rect(center=(wX/2, wY/2-40))
+            screen.blit(text, text_rect)
+            vote_button = pygame.Rect(wX/2-100, wY/2+40, 200, 80)
+            pygame.draw.rect(screen, (255, 128, 0), vote_button)
+            vote_text = self.font.render("投票へ", True, (255,255,255))
+            vote_rect = vote_text.get_rect(center=vote_button.center)
+            screen.blit(vote_text, vote_rect)
+            mdown = pygame.mouse.get_pressed()
+            mx, my = pygame.mouse.get_pos()
+            if mdown[0] and not self.pushFlag and vote_button.collidepoint(mx, my):
+                self.phase = "vote_confirm"
+                self.pushFlag = True
+            if not mdown[0]:
+                self.pushFlag = False
+        elif self.phase == "vote_confirm":
+            # 投票に進む確認画面
+            text = self.font.render("これから投票に進みます", True, (255, 255, 255))
+            text_rect = text.get_rect(center=(wX/2, wY/2-40))
+            screen.blit(text, text_rect)
+            next_button = pygame.Rect(wX/2-100, wY/2+40, 200, 80)
+            pygame.draw.rect(screen, (0, 200, 200), next_button)
+            next_text = self.font.render("次へ", True, (255,255,255))
+            next_rect = next_text.get_rect(center=next_button.center)
+            screen.blit(next_text, next_rect)
+            mdown = pygame.mouse.get_pressed()
+            mx, my = pygame.mouse.get_pos()
+            if mdown[0] and not self.pushFlag and next_button.collidepoint(mx, my):
+                # ここで投票シーンへ遷移（例: return True などでmainループでsceneを切り替える）
+                return True
+            if not mdown[0]:
+                self.pushFlag = False
+        pygame.display.flip()
+        return False
+    def tick(self):
+        # 1秒ごとに減らす
+        now = time.time()
+        if self.phase in ("think", "discuss") and self.current_time > 0:
+            if now - self.last_tick >= 1.0:
+                self.current_time -= 1
+                self.last_tick = now
         
 
 # メインループ
@@ -425,8 +558,11 @@ def main():
                     scene.started = True  # 一度だけTrueにする
             else:
                 if scene.update(screen, events):
-                    # 全員確認終了などでTrueが返ったら次のシーンへ
+                    scene = TimerDisplay(gameSettings.think_time, gameSettings.discuss_time)
                     pass
-
+        # タイマー表示
+        elif isinstance(scene, TimerDisplay):
+            scene.update(screen, events)
+            scene.tick()
 if __name__ == "__main__":
     main()
